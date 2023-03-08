@@ -1,0 +1,406 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © maxcalcroft
+
+//@version=5
+
+//////////////////////////////////////////////////////////////
+//@version=5
+//
+// Author: maxcalcroft (with help from caretaker, benso87 and Krown)
+//
+
+
+
+noColor = color.new(color.white, transp=100)
+
+//////////////////////////////////////////////////////////////
+// Inputs
+
+// Signal Types
+includeLong     = input.bool   (true, title='Long', inline='2', group='Signal Types')
+onlyConfirmed   = input.bool   (true, title='Only Confirmed Candles', inline='3', group='Signal Types')
+useSigCheck     = input.bool   (true, title='No More Signals For # Bars', inline='5', group='Signal Types')
+sigCheckBars    = input.int    (2, title='', minval=1, maxval=50, inline='5', group='Signal Types')
+plotType        = input.string ('Shape', title='Signal Marker', options=['Shape', 'Dot', 'Bar'], group='Signal Types')
+barColorLong    = input.color  (#00ff95, title='Long Bar Color', group='Signal Types')
+
+// Price
+priceSource = input.source(close, title='Price Source', group='Price')
+
+// Volume
+vMaLength   = input.int (20, title='MA Length', minval=1, group='Volume')
+vMaType     = input.string ('SMA', title='MA Type', options=['SMA', 'EMA', 'WMA'], group='Volume')
+vMult       = input.float (0.9, title='Multiplier', minval=0, step = 0.1, group='Volume', tooltip='Volume needs to be above this much times the previous volume bar to trigger a signal.')
+
+// Moving Averages
+maSource    = input.source  (close, title='Source', inline='source', group='Moving Averages')
+includeMA1  = input.bool    (false, title='', inline='MA 1', group='Moving Averages')
+ma1Color    = input.color   (#00ffc8, title='MA 1', inline='MA 1', group='Moving Averages')
+ma1Length   = input.int     (21, title='Length', minval=1, inline='MA 1', group='Moving Averages')
+ma1Type     = input.string  ('EMA', title='Type', options=['SMA','EMA'], inline='MA 1', group='Moving Averages')
+includeMA2  = input.bool    (false, title='', inline='MA 2', group='Moving Averages')
+ma2Color    = input.color   (#00e676, title='MA 2', inline='MA 2', group='Moving Averages')
+ma2Length   = input.int     (55, title='Length', minval=1, inline='MA 2', group='Moving Averages')
+ma2Type     = input.string  ('EMA', title='Type', options=['SMA','EMA'], inline='MA 2', group='Moving Averages')
+includeMA3  = input.bool    (false, title='', inline='MA 3', group='Moving Averages')
+ma3Color    = input.color   (#00bcd4, title='MA 3', inline='MA 3', group='Moving Averages')
+ma3Length   = input.int     (100, title='Length', minval=1, inline='MA 3', group='Moving Averages')
+ma3Type     = input.string  ('EMA', title='Type', options=['SMA','EMA'], inline='MA 3', group='Moving Averages')
+includeMA4  = input.bool    (false, title='', inline='MA 4', group='Moving Averages')
+ma4Color    = input.color   (#e040fb, title='MA 4', inline='MA 4', group='Moving Averages')
+ma4Length   = input.int     (377, title='Length', minval=1, inline='MA 4', group='Moving Averages')
+ma4Type     = input.string  ('EMA', title='Type', options=['SMA','EMA'], inline='MA 4', group='Moving Averages')
+includeMA5  = input.bool    (false, title='', inline='MA 5', group='Moving Averages')
+ma5Color    = input.color   (#e190fb, title='MA 5', inline='MA 5', group='Moving Averages')
+ma5Length   = input.int     (63, title='Length', minval=1, inline='MA 5', group='Moving Averages')
+ma5Type     = input.string  ('EMA', title='Type', options=['SMA','EMA'], inline='MA 5', group='Moving Averages')
+includeMA6  = input.bool    (false, title='', inline='MA 6', group='Moving Averages')
+ma6Color    = input.color   (color.blue, title='MA 6', inline='MA 6', group='Moving Averages')
+ma6Length   = input.int     (165, title='Length', minval=1, inline='MA 6', group='Moving Averages')
+ma6Type     = input.string  ('EMA', title='Type', options=['SMA','EMA'], inline='MA 6', group='Moving Averages')
+
+
+
+// BBWP
+bbwpPriceSource = input.source  (close, title='Source', inline='1', group='BBWP')
+bbwpBasisType   = input.string  ('SMA', title='Basis Type', options=['SMA', 'EMA', 'VWMA'], inline='1', group='BBWP')
+bbwpLength      = input.int     (13, title='Length', minval=1, inline='2', group='BBWP')
+bbwpLookback    = input.int     (252, title='Lookback', minval=1, inline='2', group='BBWP')
+bbwpMaType      = input.string  ('SMA', 'MA Type', options=['SMA', 'EMA', 'VWMA'], inline='3', group='BBWP')
+bbwpMaLength    = input.int     (5, 'MA Length', minval=1, inline='3', group='BBWP')
+
+// PMAR
+var string s_pmarp = 'Price Moving Average Ratio Percentile'
+var string s_pmar  = 'Price Moving Average Ratio'
+var string s_BGR   = 'Blue Green Red'
+var string s_BR    = 'Blue Red' 
+
+var float pmarHigh = 0.0
+
+pmarpSource     = input.source  (close, title='Source', inline='1', group='PMAR Entry Conditions')
+pmarpLookback   = input.int     (100, title='Lookback', minval=1, maxval=1900, inline='1', group='PMAR Entry Conditions')
+pmarpLength     = input.int     (55, title='PMAR Length', minval=1, inline='2', group='PMAR Entry Conditions')
+pmarpMAType     = input.string  ('EMA', title='MA Type', options=[ 'SMA', 'EMA', 'HMA', 'RMA', 'VWMA' ], inline='2', group='PMAR Entry Conditions')
+pmarpSigMAType  = input.string  ('SMA', title='Signal MA Type', options=[ 'SMA', 'EMA', 'HMA', 'RMA', 'VWMA' ], inline='3', group='PMAR Entry Conditions')
+pmarpSigLength  = input.int     (20, title='PMAR SignalLength', minval=1, inline='3', group='PMAR Entry Conditions')
+
+// PMARP for Exit
+
+var string s_pmarpe = 'Price Moving Average Ratio Percentile'
+var string s_pmare  = 'Price Moving Average Ratio'
+var string s_BGRe   = 'Blue Green Red'
+var string s_BRe    = 'Blue Red' 
+
+var float pmarpHighe = 0.0
+
+pmarpSourcee     = input.source  (close, title='Source', inline='1', group='PMARP Exit Conditions')
+pmarpLookbacke   = input.int     (350, title='Lookback', minval=1, maxval=1900, inline='1', group='PMARP Exit Conditions')
+pmarpLengthe     = input.int     (20, title='PMAR Length', minval=1, inline='2', group='PMARP Exit Conditions')
+pmarpMATypee     = input.string  ('VWMA', title='MA Type', options=[ 'SMA', 'EMA', 'HMA', 'RMA', 'VWMA' ], inline='2', group='PMARP Exit Conditions')
+pmarpSigMATypee  = input.string  ('SMA', title='Signal MA Type', options=[ 'SMA', 'EMA', 'HMA', 'RMA', 'VWMA' ], inline='3', group='PMARP Exit Conditions')
+pmarpSigLengthe  = input.int     (20, title='PMAR SignalLength', minval=1, inline='3', group='PMARP Exit Conditions')
+
+// Days Off
+useOffDays  = input.bool (false, title='Days Off', group='Days Off')
+offSun      = input.bool (true, title='Sunday', group='Days Off')
+offMon      = input.bool (false, title='Monday', group='Days Off')
+offTue      = input.bool (false, title='Tuesday', group='Days Off')
+offWed      = input.bool (false, title='Wednesday', group='Days Off')
+offThur     = input.bool (false, title='Thursday', group='Days Off')
+offFri      = input.bool (false, title='Friday', group='Days Off')
+offSat      = input.bool (true, title='Saturday', group='Days Off')
+
+// Time Off
+useTimeOff   = input.bool (false, title='Time Off', group='Time Off')
+timeOffRange = input.session ('0500-1300', title='Time Off', group='Time Off')
+
+
+
+
+// Long Conditions
+
+usePriceAbMaLong    = input.bool    (false, title='Price Above', inline='price1', group='Long Conditions (Affects When Signal Fires)')
+priceAbMaLongStr    = input.string  ('MA 1', title='', options=['MA 1', 'MA 2', 'MA 3', 'MA 4'], inline='price1', group='Long Conditions (Affects When Signal Fires)')
+usePriceBlMaLong    = input.bool    (false, title='Price Below', inline='price2', group='Long Conditions (Affects When Signal Fires)')
+priceBlMaLongStr    = input.string  ('MA 1', title='', options=['MA 1', 'MA 2', 'MA 3', 'MA 4'], inline='price2', group='Long Conditions (Affects When Signal Fires)')
+useVolumeLong       = input.bool    (true, title='Volume', inline='volume1', group='Long Conditions (Affects When Signal Fires)')
+volumeAboveLong     = input.string  ('Mult', title='Above', options=['MA', 'Mult', 'Both'], inline='volume1', group='Long Conditions (Affects When Signal Fires)', tooltip='See volume section for criteria used here.')
+i_ma1Above2         = input.bool    (true, title='MA 1 > MA 2', inline='ma above 1', group='Long Conditions (Affects When Signal Fires)')
+i_ma2Above3         = input.bool    (false, title='MA 2 > MA 3', inline='ma above 2', group='Long Conditions (Affects When Signal Fires)')
+i_ma3Above4         = input.bool    (false, title='MA 3 > MA 4', inline='ma above 3', group='Long Conditions (Affects When Signal Fires)')
+i_ma4Above5         = input.bool    (false, title='1h Trend Filter', inline='ma above 4', group='Trend Filters', tooltip = 'Uses ma4<ma1 to replicate 377<21EMA, essentially a 1h trend filter')
+i_ma5Above6         = input.bool    (true, title='3x4 Filter', inline='ma above 5', group='Trend Filters', tooltip='Uses ma5>ma6 to replicate 15m TF Filter')
+includeBBWPLong     = input.bool    (true, title='BBWP', inline='bbwp', group='Long Conditions (Affects When Signal Fires)')
+bbwpMinLong         = input.float   (0, title='Min', minval=0, maxval=100, step=0.01,   inline='bbwp', group='Long Conditions (Affects When Signal Fires)')
+bbwpMaxLong         = input.float   (90, title='Max', minval=0, maxval=100, step=0.01,  inline='bbwp', group='Long Conditions (Affects When Signal Fires)')
+includeBBWPMaDLong  = input.bool    (true, title='BBWP MA Direction', inline='bbwpMa', group='Long Conditions (Affects When Signal Fires)')
+bbwpMaDLong         = input.string  ('Down', title='', options=['Up', 'Down'], inline='bbwpMa', group='Long Conditions (Affects When Signal Fires)')
+pmarpTypeLong       = input.string  (s_pmar,'Indicator....', options=[ s_pmar], inline='2', group='Long Conditions (Affects When Signal Fires)')
+includePMARLong     = input.bool    (true, title='PMAR', inline='pmar', group='Long Conditions (Affects When Signal Fires)')
+pmarLongAB          = input.string  ('Below', title='', options=['Above', 'Below'], inline='pmar', group='Long Conditions (Affects When Signal Fires)')
+pmarThresholdLong   = input.float   (0.9995, title='', inline='pmar', step = 0.0001, group='Long Conditions (Affects When Signal Fires)')
+usePmarpCrossMaLong = input.bool    (false, title='PMAR Crossing MA', inline='pmar2', group='Long Conditions (Affects When Signal Fires)')
+pmarpCrossDirLong   = input.string  ('Down', title='', options=['Up', 'Down'], inline='pmar2', group='Long Conditions (Affects When Signal Fires)')
+usepmarpforexit     = input.bool    (false, title = 'Use PMARP For Exit' , group = 'Bot Exit Parameters' )
+pmarpThresholdLong  = input.float   (75, title = 'PMARP Above', group='Bot Exit Parameters')
+
+// Trade Parameters
+
+TakeProfitLong     = input.float   (0.31, title='TP%', minval=0, maxval=100, step=0.01, group = 'Bot Exit Parameters', tooltip = 'Only affects backtest results, to change TP edit the Alertatron message')/100
+StopLossLong       = input.float   (0.50, title='SL%', minval=0, maxval=100, step = 0.01, group = 'Bot Exit Parameters', tooltip = 'Only affects backtest results, to change SL edit the Alertatron message')/100
+//////////////////////////////////////////////////////////////
+// Calculations
+
+// Function to calculate moving averages based on chosen type
+f_ma(source, length, type) =>
+    switch type
+        'SMA' => ta.sma(source, length)
+        'EMA' => ta.ema(source, length)
+        'RMA' => ta.rma(source, length)
+        'WMA' => ta.wma(source, length)
+
+// volume
+vMa = f_ma(volume, vMaLength, vMaType)
+
+vAboveMa = volume > vMa
+vAboveMult = volume >= volume[1] * vMult
+vAboveBoth = vAboveMa and vAboveMult
+
+vAboveLong = volumeAboveLong == 'MA' ? vAboveMa : volumeAboveLong == 'Mult' ? vAboveMult : vAboveBoth
+
+// Moving Averages
+ma1 = f_ma(maSource, ma1Length, ma1Type)
+ma2 = f_ma(maSource, ma2Length, ma2Type)
+ma3 = f_ma(maSource, ma3Length, ma3Type)
+ma4 = f_ma(maSource, ma4Length, ma4Type)
+ma5 = f_ma(maSource, ma5Length, ma5Type)
+ma6 = f_ma(maSource, ma6Length, ma6Type)
+
+
+// Function to convert chosen MA to MA series
+f_convertMA (ma) =>
+    switch ma
+        'MA 1' => ma1
+        'MA 2' => ma2
+        'MA 3' => ma3
+        'MA 4' => ma4
+        'MA 5' => ma5
+        'MA 6' => ma6
+        
+        
+
+ma1Above2   = ma1 > ma2
+ma1Above3   = ma1 > ma3
+ma1Above4   = ma1 > ma4
+ma1Above5   = ma1 > ma5
+ma1Above6   = ma1 > ma6
+
+
+ma2Above1   = ma2 > ma1
+ma2Above3   = ma2 > ma3
+ma2Above4   = ma2 > ma4
+ma2Above5   = ma2 > ma5
+ma2Above6   = ma2 > ma6
+
+
+ma3Above1   = ma3 > ma1
+ma3Above2   = ma3 > ma2
+ma3Above4   = ma3 > ma4
+ma3Above5   = ma3 > ma5
+ma3Above6   = ma3 > ma6
+
+
+ma4Above1   = ma4 > ma1
+ma4Above2   = ma4 > ma2
+ma4Above3   = ma4 > ma3
+ma4Above5   = ma4 > ma5
+ma4Above6   = ma4 > ma6
+
+ma5Above1   = ma5 > ma1
+ma5Above2   = ma5 > ma2
+ma5Above3   = ma5 > ma3
+ma5Above4   = ma5 > ma4
+ma5Above6   = ma5 > ma6
+
+
+ma6Above1   = ma6 > ma1
+ma6Above2   = ma6 > ma2
+ma6Above3   = ma6 > ma3
+ma6Above4   = ma6 > ma4
+ma6Above5   = ma6 > ma5
+
+
+
+
+
+// Price check conversions
+
+priceAbMaLong  = f_convertMA(priceAbMaLongStr)
+priceBlMaLong  = f_convertMA(priceBlMaLongStr)
+
+
+// BBWP
+// Credit to The_Caretaker
+f_maType ( _price, _len, _type ) =>
+    _type == 'SMA' ? ta.sma ( _price, _len ) : _type == 'EMA' ? ta.ema ( _price, _len ) : ta.vwma ( _price, _len )
+
+f_bbwp ( _price, _bbwLen, _bbwpLen, _type ) =>
+    float _basis = f_maType ( _price, _bbwLen, _type )
+    float _dev = ta.stdev ( _price, _bbwLen )
+    _bbw = ( _basis + _dev - ( _basis - _dev )) / _basis
+    _bbwSum = 0.0
+    _len = bar_index < _bbwpLen ? bar_index : _bbwpLen
+    for _i = 1 to _len by 1
+        _bbwSum += ( _bbw[_i] > _bbw ? 0 : 1 )
+        _bbwSum
+    _return = bar_index >= _bbwLen ? ( _bbwSum / _len) * 100 : na
+    _return
+
+bbwp = f_bbwp ( bbwpPriceSource, bbwpLength, bbwpLookback, bbwpBasisType )
+bbwpMa = f_ma (bbwp, bbwpMaLength, bbwpMaType)
+
+bbwpMaDirection = bbwpMa > bbwpMa[1] ? 'Up' : bbwpMa < bbwpMa[1] ? 'Down' : na
+
+//PMARP
+///////////////////////////////
+f_prior_sum ( _P, _X ) =>
+    math.sum ( _P[1], _X - 1 )
+
+f_ma_val ( _P, _typ, _len ) =>
+    _typ == 'SMA' ? ta.sma ( _P, _len ) : _typ == 'EMA' ? ta.ema ( _P, _len ) : _typ == 'RMA' ? ta.rma ( _P, _len ) : _typ == 'HMA' ? ta.hma ( _P, _len ) : ta.vwma ( _P, _len )
+
+f_pmarp ( _price, _pmarLen, _pmarpLen, _type ) =>
+    _pmar = math.abs ( _price / f_ma_val ( _price, _type, _pmarLen ))
+    _pmarpSum = 0
+    _len = bar_index < _pmarpLen ? bar_index : _pmarpLen
+    for i = 1 to _len by 1
+        _pmarpSum += ( _pmar[i] > _pmar ? 0 : 1 )
+        _pmarpSum
+    _return = bar_index >= _pmarLen ? _pmarpSum / _len * 100 : na
+
+ 
+
+
+/////////////////////////////////////////////////////////////////////////////// 
+// calculations
+
+pmarpOn     = pmarpTypeLong == 'Price Moving Average Ratio'
+
+ma          = f_ma_val (priceSource, pmarpMAType, pmarpLength)
+pmar        = priceSource / ma
+pmarp       = f_pmarp ( priceSource, pmarpLength, pmarpLookback, pmarpMAType )
+
+pmarHigh := pmar > pmarHigh ? pmar : pmarHigh
+
+c_pmar      = ( pmar / pmarHigh )*100
+
+plotline    = pmarpOn ? pmarp : pmar
+
+
+pmarpCrossUp = ta.crossover(pmarp, ma)
+pmarpCrossDown = ta.crossunder(pmarp, ma)
+
+
+
+
+
+//PMARP EXIT
+///////////////////////////////
+f_prior_sume( _P, _X ) =>
+    math.sum ( _P[1], _X - 1 )
+
+f_ma_vale ( _P, _typ, _len ) =>
+    _typ == 'SMA' ? ta.sma ( _P, _len ) : _typ == 'EMA' ? ta.ema ( _P, _len ) : _typ == 'RMA' ? ta.rma ( _P, _len ) : _typ == 'HMA' ? ta.hma ( _P, _len ) : ta.vwma ( _P, _len )
+
+f_pmarpe ( _price, _pmarLene, _pmarpLene, _type ) =>
+    _pmarp = math.abs ( _price / f_ma_vale ( _price, _type, _pmarLene ))
+    _pmarpSume = 0
+    _len = bar_index < _pmarpLene ? bar_index : _pmarpLene
+    for i = 1 to _len by 1
+        _pmarpSume += ( _pmarp[i] > _pmarp ? 0 : 1 )
+        _pmarpSume
+    _return = bar_index >= _pmarLene ? _pmarpSume / _len * 100 : na
+
+ 
+
+
+/////////////////////////////////////////////////////////////////////////////// 
+// PMARP calculations EXIT
+
+pmarpOne     = usepmarpforexit == true
+
+mae          = f_ma_val (priceSource, pmarpMATypee, pmarpLengthe)
+pmarpe      = f_pmarp ( priceSource, pmarpLengthe, pmarpLookbacke, pmarpMATypee )
+
+pmarpHighe := pmarpe > pmarpHighe ? pmarpe : pmarpHighe
+
+c_pmarpe      = ( pmarpe / pmarpHighe )*100
+
+
+
+
+// Calculations and variables to determine if a signal has been plotted recently
+var sigCheckArrayS = array.new_int (0)
+
+sigCheckL = array.sum(sigCheckArrayS) > 0 ? true : false
+
+
+// Time Off
+timeOffSession = time == time(timeframe=timeframe.period, session=timeOffRange, timezone='UTC')
+
+// Signals
+dayOff = useOffDays and ((offSun and dayofweek == dayofweek.sunday) or (offMon and dayofweek == dayofweek.monday) or (offTue and dayofweek == dayofweek.tuesday) or (offWed and dayofweek == dayofweek.wednesday) or (offThur and dayofweek == dayofweek.thursday) or (offFri and dayofweek == dayofweek.friday) or (offSat and dayofweek == dayofweek.saturday))
+timeOff = useTimeOff and timeOffSession
+
+priceSignalLong     = (not usePriceAbMaLong or close > priceAbMaLong) and (not usePriceBlMaLong or close < priceBlMaLong)
+
+volSignalLong       = not useVolumeLong or vAboveLong
+
+maSignalLong        = (not i_ma1Above2 or ma1Above2) and (not i_ma2Above3 or ma2Above3) and (not i_ma3Above4 or ma3Above4) and (not i_ma4Above5 or ma4Above5) and (not i_ma5Above6 or ma5Above6)
+
+bbwpSignalLong      = (not includeBBWPLong or (bbwp < bbwpMaxLong and bbwp > bbwpMinLong))
+
+bbwpMaSignalLong    = not includeBBWPMaDLong or (includeBBWPMaDLong and bbwpMaDirection == bbwpMaDLong)
+
+pmarSignalLong      = not includePMARLong or (pmarLongAB == 'Above' and pmar >= pmarThresholdLong) or (pmarLongAB == 'Below' and pmar <= pmarThresholdLong)
+
+pmarpMaCrossLong    = not usePmarpCrossMaLong or (pmarpCrossDirLong == 'Up' and pmarpCrossUp) or (pmarpCrossDirLong == 'Down' and pmarpCrossDown)
+
+longSignal          = includeLong and not dayOff and not timeOff and (not useSigCheck or not sigCheckL) and (not onlyConfirmed or barstate.isconfirmed) and priceSignalLong and volSignalLong and maSignalLong and bbwpSignalLong and bbwpMaSignalLong and pmarSignalLong and pmarpMaCrossLong
+
+
+// Check if a new signal should not be plotted
+
+
+array.push(sigCheckArrayS, longSignal ? 1 : 0)
+
+    
+if array.size(sigCheckArrayS) > sigCheckBars
+    array.remove(sigCheckArrayS, 0)
+
+//////////////////////////////////////////////////////////////
+// Plots
+
+// Moving Averages
+plot(includeMA1 ? ma1 : na, title='MA 1', color=ma1Color, linewidth=2, offset=0)
+plot(includeMA2 ? ma2 : na, title='MA 2', color=ma2Color, linewidth=2, offset=0)
+plot(includeMA3 ? ma3 : na, title='MA 3', color=ma3Color, linewidth=2, offset=0)
+plot(includeMA4 ? ma4 : na, title='MA 4', color=ma4Color, linewidth=2, offset=0)
+plot(includeMA5 ? ma5 : na, title='MA 5', color=ma5Color, linewidth=2, offset=0)
+plot(includeMA6 ? ma6 : na, title='MA 6', color=ma6Color, linewidth=2, offset=0)
+
+
+// Signals
+plotshape(plotType == 'Shape' ? longSignal : na, title='Long', location=location.belowbar, style=shape.triangleup, size=size.small, color=color.blue,  display = display.none)
+plotchar(plotType == 'Dot' ? longSignal : na, title='Long', location=location.belowbar, char='•', color=color.blue, display = display.none)
+
+
+//TP SL Calculations
+
+Longstop = strategy.position_avg_price * (1-StopLossLong) 
+Longprofit = strategy.position_avg_price * (1+TakeProfitLong) 
+
+
+
+
+
